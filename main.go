@@ -68,4 +68,48 @@ func (a *App) getDefaultRoute(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Could not retrieve all URLs, because %s. \n", err)
 		return
 	}
+
+	baseURL := tmpl.Execute(w, pageData)
+	pageData := PageData{
+	 URLData: urls,
+	 BaseURL: baseURL,
+	}
+
+	err = tmpl.Execute(w, pageData)
+	if err != nil {
+		fmt.Println(err.Error())
+		serverError(w, err)
+	}
+}
+
+func (a *App) routes() http.Handler {
+	router := httprouter.New()
+	fileServer := http.FileServer(http.Dir("./static/"))
+	router.Handler(http.MethodGet, "/static/*filepath", http.StripPrefix("/static", fileServer))
+
+	router.HandlerFunc(http.MethodGet, "/", a.getDefaultRoute)
+
+	standard := alice.New()
+
+	return standard.Then(router)
+}
+
+func main() {
+	app := newApp("data/datbase.sqlite3")
+	addr := flag.String("addr", ":8080", "HTTP Network Address")
+
+	infoLog := log.New(os.stdout, "INFO\t", log.Ldate|log.Ltime)
+	errorLog := log.New(os.Stderr, "ERROR\t", log.Ldate|log.Ltime|log.Lshortfile)
+
+	defer app.urls.DB.close()
+
+	srv := &http.Server{
+		Addr: *addr,
+		ErrorLog: errorLog,
+		Handler: app.routes()
+	}
+
+	infoLog.Printf("Starting server on %s", *addr)
+	err := srv.ListenAndServe()
+	errorLog.Fatal(err)
 }
